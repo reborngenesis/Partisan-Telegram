@@ -17,7 +17,11 @@ public final class RgCryptoKeyringStore {
     private final RgCryptoKeyringDao dao;
 
     public RgCryptoKeyringStore(Context context, int account) {
-        this.dao = RgCryptoKeyringDatabase.getInstance(context, account).keyringDao();
+        this(RgCryptoKeyringDatabase.getInstance(context, account).keyringDao());
+    }
+
+    RgCryptoKeyringStore(RgCryptoKeyringDao dao) {
+        this.dao = dao;
     }
 
     public List<RgCryptoKeyringEntry> getByPeer(String peerId) {
@@ -61,11 +65,13 @@ public final class RgCryptoKeyringStore {
         RgCryptoKeyringEntry existing = dao.getByKeyIds(normalizedPeer, normalizedDevice, card.signingKeyId,
                 encryptionKeyId);
 
-        int finalTrust = trustState;
+        int finalTrust = RgCryptoTrustState.UNTRUSTED;
         if (keepTrustIfExists && existing != null) {
             finalTrust = existing.trustState;
         }
-
+        if (finalTrust == RgCryptoTrustState.TRUSTED && signatureState != RgCryptoSignatureState.VALID) {
+            finalTrust = RgCryptoTrustState.UNTRUSTED;
+        }
         RgCryptoKeyringEntry entry = RgCryptoKeyringEntry.fromKeyCard(normalizedPeer, card, finalTrust,
                 signatureState, now);
         if (existing != null) {
@@ -80,8 +86,18 @@ public final class RgCryptoKeyringStore {
     }
 
     public void updateTrustState(String peerId, String deviceId, int signingKeyId, int encryptionKeyId, int trustState) {
-        dao.updateTrustState(RgCryptoIds.normalizePeerId(peerId), RgCryptoIds.normalizeDeviceId(deviceId),
-                signingKeyId, encryptionKeyId, trustState, System.currentTimeMillis());
+        String normalizedPeer = RgCryptoIds.normalizePeerId(peerId);
+        String normalizedDevice = RgCryptoIds.normalizeDeviceId(deviceId);
+        if (trustState == RgCryptoTrustState.TRUSTED) {
+            RgCryptoKeyringEntry entry = dao.getByKeyIds(normalizedPeer, normalizedDevice, signingKeyId, encryptionKeyId);
+            if (entry == null || entry.signatureValid != RgCryptoSignatureState.VALID) {
+                throw new IllegalStateException("Only existing keys with valid signatures can be trusted");
+            }
+        }
+        if (dao.updateTrustState(normalizedPeer, normalizedDevice, signingKeyId, encryptionKeyId,
+                trustState, System.currentTimeMillis()) != 1) {
+            throw new IllegalStateException("Key no longer exists");
+        }
     }
 
     public void updateSignatureState(String peerId, String deviceId, int signingKeyId, int encryptionKeyId,

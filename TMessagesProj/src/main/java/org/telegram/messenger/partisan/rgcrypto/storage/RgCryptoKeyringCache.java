@@ -3,6 +3,9 @@ package org.telegram.messenger.partisan.rgcrypto.storage;
 import android.content.Context;
 import android.util.SparseArray;
 
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLog;
+
 import com.google.crypto.tink.KeysetHandle;
 
 import org.telegram.messenger.partisan.rgcrypto.RgCryptoIds;
@@ -12,6 +15,9 @@ import org.telegram.messenger.partisan.rgcrypto.RgCryptoRecipientPublic;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Supplier;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,8 +28,7 @@ public final class RgCryptoKeyringCache {
     private static final Object LOCK = new Object();
     private static final SparseArray<RgCryptoKeyringCache> INSTANCES = new SparseArray<>();
 
-    private final Context context;
-    private final int account;
+    private final Supplier<RgCryptoKeyringStore> storeFactory;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ConcurrentHashMap<String, List<RgCryptoRecipientPublic>> recipientsByPeer = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, KeysetHandle> signingByPeerAndKid = new ConcurrentHashMap<>();
@@ -33,8 +38,12 @@ public final class RgCryptoKeyringCache {
     private final ConcurrentHashMap<String, Integer> trustByPeerAndKid = new ConcurrentHashMap<>();
 
     private RgCryptoKeyringCache(Context context, int account) {
-        this.context = context.getApplicationContext();
-        this.account = account;
+        Context applicationContext = context.getApplicationContext();
+        this.storeFactory = () -> new RgCryptoKeyringStore(applicationContext, account);
+    }
+
+    RgCryptoKeyringCache(Supplier<RgCryptoKeyringStore> storeFactory) {
+        this.storeFactory = storeFactory;
     }
 
     public static RgCryptoKeyringCache get(Context context, int account) {
@@ -49,71 +58,71 @@ public final class RgCryptoKeyringCache {
     }
 
     public void refreshForPeers(List<String> peerIds) {
-        if (peerIds == null || peerIds.isEmpty()) {
-            return;
-        }
-        executor.execute(() -> {
-            RgCryptoKeyringStore store = new RgCryptoKeyringStore(context, account);
+        refreshForPeers(peerIds, null);
+    }
+
+    public void refreshForPeers(List<String> peerIds, Runnable onComplete) {
+        refreshForPeers(peerIds, onComplete, null);
+    }
+
+    public void refreshForPeers(List<String> peerIds, Runnable onComplete, Runnable onError) {
+        List<String> requestedPeers = new ArrayList<>();
+        if (peerIds != null) {
             for (String peerId : peerIds) {
-                String normalizedPeer = RgCryptoIds.normalizePeerId(peerId);
-                List<RgCryptoKeyringEntry> entries = store.getByPeer(normalizedPeer);
-                List<RgCryptoRecipientPublic> recipients = new ArrayList<>();
-                Set<String> newSigningKids = new HashSet<>();
-                Set<String> newTrustKeys = new HashSet<>();
-                if (entries != null) {
-                    for (RgCryptoKeyringEntry entry : entries) {
-                        try {
-                            String signingKid = entry.signingKid;
-                            if (entry.signingKeysetJson != null) {
-                                KeysetHandle signing = RgCryptoKeys.parsePublicKeyset(entry.signingKeysetJson);
-                                if (signingKid == null) {
-                                    try {
-                                        signingKid = RgCryptoKeys.kidFromKeyset(signing);
-                                    } catch (Exception ignored) {
-                                        signingKid = null;
-                                    }
-                                }
-                                if (signingKid != null) {
-                                    signingByPeerAndKid.put(signingKeyKey(normalizedPeer, signingKid), signing);
-                                    newSigningKids.add(signingKid);
-                                }
-                            }
-                            String encryptionKid = entry.encryptionKid;
-                            if (encryptionKid == null && entry.encryptionKeysetJson != null) {
-                                try {
-                                    KeysetHandle encPublic = RgCryptoKeys.parsePublicKeyset(entry.encryptionKeysetJson);
-                                    encryptionKid = RgCryptoKeys.kidFromKeyset(encPublic);
-                                } catch (Exception ignored) {
-                                    encryptionKid = null;
-                                }
-                            }
-                            if (signingKid != null) {
-                                String trustKey = trustKey(normalizedPeer, signingKid, encryptionKid);
-                                trustByPeerAndKid.put(trustKey, entry.trustState);
-                                newTrustKeys.add(trustKey);
-                            }
-                            if (entry.trustState != RgCryptoTrustState.REVOKED &&
-                                    entry.signatureValid == RgCryptoSignatureState.VALID) {
-                                KeysetHandle enc = RgCryptoKeys.parsePublicKeyset(entry.encryptionKeysetJson);
-                                String encKid = encryptionKid;
-                                if (encKid == null) {
-                                    try {
-                                        encKid = RgCryptoKeys.kidFromKeyset(enc);
-                                    } catch (Exception ignored) {
-                                        encKid = null;
-                                    }
-                                }
-                                recipients.add(new RgCryptoRecipientPublic(entry.encryptionKeyId, enc, encKid));
-                            }
-                        } catch (Exception ignored) {
-                        }
+                requestedPeers.add(RgCryptoIds.normalizePeerId(peerId));
+            }
+        }
+        // Even an empty refresh is queued, so it can act as a barrier after clearAll().
+        executor.execute(() -> {
+            try {
+                if (!requestedPeers.isEmpty()) {
+                    RgCryptoKeyringStore store = storeFactory.get();
+                    for (String peerId : requestedPeers) {
+                        refreshPeer(store, peerId);
                     }
                 }
-                recipientsByPeer.put(normalizedPeer, recipients);
-                updateSigningKidIndex(normalizedPeer, newSigningKids);
-                updateTrustKeys(normalizedPeer, newTrustKeys);
+            } catch (Exception e) {
+                FileLog.e(e);
+                for (String peerId : requestedPeers) {
+                    recipientsByPeer.remove(peerId);
+                    updateSigningKidIndex(peerId, Collections.emptySet());
+                    updateTrustKeys(peerId, Collections.emptySet());
+                }
+                if (onError != null) {
+                    AndroidUtilities.runOnUIThread(onError);
+                }
+                return;
+            }
+            if (onComplete != null) {
+                AndroidUtilities.runOnUIThread(onComplete);
             }
         });
+    }
+
+    private void refreshPeer(RgCryptoKeyringStore store, String peerId) throws Exception {
+        List<RgCryptoKeyringEntry> entries = store.getByPeer(peerId);
+        List<RgCryptoRecipientPublic> recipients = new ArrayList<>();
+        Map<String, KeysetHandle> signingKeys = new HashMap<>();
+        Map<String, Integer> trustStates = new HashMap<>();
+        for (RgCryptoKeyringEntry entry : entries) {
+            KeysetHandle signing = RgCryptoKeys.parsePublicKeyset(entry.signingKeysetJson);
+            KeysetHandle encryption = RgCryptoKeys.parsePublicKeyset(entry.encryptionKeysetJson);
+            String signingKid = entry.signingKid != null ? entry.signingKid : RgCryptoKeys.kidFromKeyset(signing);
+            String encryptionKid = entry.encryptionKid != null ? entry.encryptionKid : RgCryptoKeys.kidFromKeyset(encryption);
+            signingKeys.put(signingKid, signing);
+            trustStates.put(trustKey(peerId, signingKid, encryptionKid), entry.trustState);
+            if (entry.trustState == RgCryptoTrustState.TRUSTED && entry.signatureValid == RgCryptoSignatureState.VALID) {
+                recipients.add(new RgCryptoRecipientPublic(entry.encryptionKeyId, encryption, encryptionKid));
+            }
+        }
+        // Publish only fully parsed peer entries; failures leave no partially indexed keys.
+        for (Map.Entry<String, KeysetHandle> signing : signingKeys.entrySet()) {
+            signingByPeerAndKid.put(signingKeyKey(peerId, signing.getKey()), signing.getValue());
+        }
+        trustByPeerAndKid.putAll(trustStates);
+        updateSigningKidIndex(peerId, new HashSet<>(signingKeys.keySet()));
+        updateTrustKeys(peerId, new HashSet<>(trustStates.keySet()));
+        recipientsByPeer.put(peerId, recipients);
     }
 
     public List<RgCryptoRecipientPublic> getRecipientsForPeers(List<String> peerIds) {
@@ -200,11 +209,14 @@ public final class RgCryptoKeyringCache {
         Set<String> oldKids = signingKidsByPeer.put(peerId, newKids);
         if (oldKids != null) {
             for (String oldKid : oldKids) {
-                Set<String> peers = peersBySigningKid.get(oldKid);
-                if (peers != null) {
-                    peers.remove(peerId);
-                    if (peers.isEmpty()) {
-                        peersBySigningKid.remove(oldKid);
+                if (newKids == null || !newKids.contains(oldKid)) {
+                    signingByPeerAndKid.remove(signingKeyKey(peerId, oldKid));
+                    Set<String> peers = peersBySigningKid.get(oldKid);
+                    if (peers != null) {
+                        peers.remove(peerId);
+                        if (peers.isEmpty()) {
+                            peersBySigningKid.remove(oldKid);
+                        }
                     }
                 }
             }

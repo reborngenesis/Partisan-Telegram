@@ -6201,9 +6201,9 @@ public class MessageObject {
                 RgCryptoKeyRequest req = RgCryptoKeyRequest.unpack(normalized);
                 rgcryptKeyRequestRequesterId = req.requesterId;
                 if (rgcryptKeyRequestRequesterId != null) {
-                    messageText = "\uD83D\uDD11 Запрос ключа от " + rgcryptKeyRequestRequesterId;
+                    messageText = LocaleController.formatString(R.string.RgcryptKeyRequestFrom, rgcryptKeyRequestRequesterId);
                 } else {
-                    messageText = "\uD83D\uDD11 Запрос ключа";
+                    messageText = LocaleController.getString(R.string.RgcryptKeyRequest);
                 }
             } catch (Exception e) {
                 // keep original messageText
@@ -6278,9 +6278,11 @@ public class MessageObject {
                     rgcryptKeyCardSafetyNumber = null;
                 }
                 if (!rgcryptKeyCardSignatureOk) {
-                    messageText = "\uD83D\uDD10 KeyCard (BAD SIGNATURE)";
+                    messageText = LocaleController.getString(R.string.RgcryptKeyCardBadSignature);
                 } else {
-                    messageText = "\uD83D\uDD10 KeyCard (" + (rgcryptKeyCardVerified ? "VERIFIED" : "UNVERIFIED") + ")";
+                    messageText = rgcryptKeyCardVerified
+                            ? LocaleController.getString(R.string.RgcryptKeyCardVerified)
+                            : LocaleController.getString(R.string.RgcryptKeyCardUnverified);
                 }
             } catch (Exception e) {
                 // keep original messageText
@@ -6312,17 +6314,17 @@ public class MessageObject {
                 break;
             case NEED_KEY: {
                 String kid = rgcryptDecryptResult.missingKid != null ? rgcryptDecryptResult.missingKid : "?";
-                messageText = "\uD83D\uDD12 Нет ключа (KID " + kid + ")";
+                messageText = LocaleController.formatString(R.string.RgcryptNoKey, kid);
                 break;
             }
             case BAD_SIGNATURE:
-                messageText = "Подпись не прошла";
+                messageText = LocaleController.getString(R.string.RgcryptBadSignature);
                 break;
             case BAD_HASH:
-                messageText = "Сообщение повреждено";
+                messageText = LocaleController.getString(R.string.RgcryptBadHash);
                 break;
             case DECRYPT_FAIL:
-                messageText = "\uD83D\uDD12 Не удалось расшифровать";
+                messageText = LocaleController.getString(R.string.RgcryptDecryptFailed);
                 break;
             case PARSE_FAIL:
             default:

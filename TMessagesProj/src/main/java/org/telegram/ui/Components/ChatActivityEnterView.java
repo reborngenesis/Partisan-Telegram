@@ -2812,7 +2812,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             rgcryptButton.setScaleType(ImageView.ScaleType.CENTER);
             rgcryptButton.setImageResource(R.drawable.msg_mini_lock3);
             rgcryptButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
-            rgcryptButton.setContentDescription("RGCRYPT");
+            rgcryptButton.setContentDescription(LocaleController.getString(R.string.RgcryptContentDescription));
             attachLayout.addView(rgcryptButton, LayoutHelper.createLinear(DEFAULT_HEIGHT, DEFAULT_HEIGHT));
             rgcryptButton.setOnClickListener(v -> {
                 setRgcryptEnabled(!rgcryptEnabled);
@@ -2823,7 +2823,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             rgcryptModeButton = new ImageView(context);
             rgcryptModeButton.setScaleType(ImageView.ScaleType.CENTER);
             rgcryptModeButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
-            rgcryptModeButton.setContentDescription("RGCRYPT: text");
+            rgcryptModeButton.setContentDescription(LocaleController.getString(R.string.RgcryptTextContentDescription));
             rgcryptModeButton.setVisibility(GONE);
             attachLayout.addView(rgcryptModeButton, LayoutHelper.createLinear(DEFAULT_HEIGHT, DEFAULT_HEIGHT));
             rgcryptModeButton.setOnClickListener(v -> {
@@ -9105,7 +9105,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         int color = getThemedColor(rgcryptEnabled ? Theme.key_chat_messagePanelVoiceLock : Theme.key_glass_defaultIcon);
         rgcryptModeButton.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
         rgcryptModeButton.setAlpha(rgcryptEnabled ? 1f : 0.6f);
-        rgcryptModeButton.setContentDescription(rgcryptSendAsFile ? "RGCRYPT: file" : "RGCRYPT: text");
+        rgcryptModeButton.setContentDescription(LocaleController.getString(rgcryptSendAsFile
+                ? R.string.RgcryptFileContentDescription : R.string.RgcryptTextContentDescription));
     }
 
     private ArrayList<String> collectRgcryptPeerIds() {
@@ -9173,7 +9174,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             FileLog.e(e);
             AndroidUtilities.runOnUIThread(() -> {
                 if (parentFragment != null) {
-                    AlertsCreator.showSimpleAlert(parentFragment, "RGCRYPT", "Не удалось зашифровать подпись");
+                    AlertsCreator.showSimpleAlert(parentFragment, "RGCRYPT",
+                            LocaleController.getString(R.string.RgcryptSignatureFailed));
                 }
             });
             return null;

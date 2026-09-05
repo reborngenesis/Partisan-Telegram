@@ -208,6 +208,8 @@ import org.telegram.messenger.partisan.rgcrypto.RgCryptoTextCodec;
 import org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoKeyringStore;
 import org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoTrustState;
 import org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoKeyringCache;
+import org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoKeyringEntry;
+import org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoSignatureState;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.messenger.camera.CameraView;
 import org.telegram.messenger.fakepasscode.FakePasscodeUtils;
@@ -486,6 +488,9 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void sendMyKeyCard() {
+        if (getParentActivity() == null || !isRgcryptUiAllowed()) {
+            return;
+        }
         try {
             RgCrypto.initialize();
             RgCryptoKeyCard card = RgCryptoKeyCard.create(
@@ -501,6 +506,9 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void copyMyKeyCardToClipboard() {
+        if (getParentActivity() == null || !isRgcryptUiAllowed()) {
+            return;
+        }
         try {
             RgCrypto.initialize();
             RgCryptoKeyCard card = RgCryptoKeyCard.create(
@@ -510,10 +518,10 @@ public class ChatActivity extends BaseFragment implements
             );
             String payload = RgCryptoKeyCardCodec.pack(card);
             AndroidUtilities.addToClipboard(payload);
-            AlertsCreator.showSimpleAlert(this, "RGCRYPT", "KeyCard скопирован");
+            AlertsCreator.showSimpleAlert(this, LocaleController.getString(R.string.RgcryptTitle), LocaleController.getString(R.string.RgcryptCopiedKeyCard));
         } catch (Exception e) {
             FileLog.e(e);
-            AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Не удалось скопировать KeyCard");
+            AlertsCreator.showSimpleAlert(this, LocaleController.getString(R.string.RgcryptTitle), LocaleController.getString(R.string.RgcryptCopyKeyCardFailed));
         }
     }
 
@@ -5146,9 +5154,9 @@ public class ChatActivity extends BaseFragment implements
             searchItemVisible = false;
             if (chatMode == MODE_DEFAULT) {
                 rgcryptSendKeyItem = menu.addItem(RGCRYPT_SEND_KEY_MENU, R.drawable.msg_mini_lock3);
-                rgcryptSendKeyItem.setContentDescription("RGCRYPT key");
+                rgcryptSendKeyItem.setContentDescription(LocaleController.getString(R.string.RgcryptKeyContentDescription));
                 rgcryptResetItem = menu.addItem(RGCRYPT_RESET_KEYS_MENU, R.drawable.msg_mini_lock3);
-                rgcryptResetItem.setContentDescription("RGCRYPT reset keys");
+                rgcryptResetItem.setContentDescription(LocaleController.getString(R.string.RgcryptResetKeysContentDescription));
                 updateRgcryptActionItems();
             }
         }
@@ -5315,7 +5323,8 @@ public class ChatActivity extends BaseFragment implements
             translateItem = headerItem.lazilyAddSubItem(translate, R.drawable.msg_translate, LocaleController.getString(R.string.TranslateMessage));
             updateTranslateItemVisibility();
             if (chatMode == MODE_DEFAULT && !isEncryptedChat()) {
-                rgcryptKeyManagerItem = headerItem.lazilyAddSubItem(RGCRYPT_KEY_MANAGER_MENU, R.drawable.msg_mini_lock3, "RGCRYPT ключи");
+                rgcryptKeyManagerItem = headerItem.lazilyAddSubItem(RGCRYPT_KEY_MANAGER_MENU, R.drawable.msg_mini_lock3,
+                        LocaleController.getString(R.string.RgcryptTitle));
                 updateRgcryptActionItems();
             }
             if (currentChat != null && !currentChat.creator && !ChatObject.hasAdminRights(currentChat)) {
@@ -11199,8 +11208,10 @@ public class ChatActivity extends BaseFragment implements
             actionModeViews.add(actionMode.addItemWithWidth(copy, R.drawable.msg_copy, dp(48), LocaleController.getString(R.string.Copy)));
             actionModeViews.add(actionMode.addItemWithWidth(delete, R.drawable.msg_delete, dp(48), LocaleController.getString(R.string.Delete)));
         }
-        actionModeViews.add(actionMode.addItemWithWidth(OPTION_RGCRYPT_IMPORT_KEYCARD, R.drawable.msg_mini_lock3, AndroidUtilities.dp(54), "Импортировать ключ"));
-        actionModeViews.add(actionMode.addItemWithWidth(OPTION_RGCRYPT_SHOW_FINGERPRINT, R.drawable.msg_mini_lock3, AndroidUtilities.dp(54), "Показать отпечаток"));
+        actionModeViews.add(actionMode.addItemWithWidth(OPTION_RGCRYPT_IMPORT_KEYCARD, R.drawable.msg_mini_lock3,
+                AndroidUtilities.dp(54), LocaleController.getString(R.string.RgcryptImportKey)));
+        actionModeViews.add(actionMode.addItemWithWidth(OPTION_RGCRYPT_SHOW_FINGERPRINT, R.drawable.msg_mini_lock3,
+                AndroidUtilities.dp(54), LocaleController.getString(R.string.RgcryptFingerprint)));
         actionMode.setItemVisibility(edit, canEditMessagesCount == 1 && selectedMessagesIds[0].size() + selectedMessagesIds[1].size() == 1 ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(copy, !isPeerNoForwards() && selectedMessagesCanCopyIds[0].size() + selectedMessagesCanCopyIds[1].size() != 0 ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(star, selectedMessagesCanStarIds[0].size() + selectedMessagesCanStarIds[1].size() != 0 ? View.VISIBLE : View.GONE);
@@ -20814,20 +20825,24 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void showRgcryptKeyManager() {
-        if (getParentActivity() == null) {
+        if (getParentActivity() == null || !isRgcryptUiAllowed()) {
             return;
         }
         String[] items = new String[] {
-                "Отправить KeyCard",
-                "Скопировать мой KeyCard",
-                "Показать мой отпечаток",
-                "Сменить мой ключ",
-                "Импортировать ключ из текста",
-                "Удалить импортированный ключ"
+                LocaleController.getString(R.string.RgcryptSendKeyCard),
+                LocaleController.getString(R.string.RgcryptCopyMyKeyCard),
+                LocaleController.getString(R.string.RgcryptShowMyFingerprint),
+                LocaleController.getString(R.string.RgcryptRotateKeys),
+                LocaleController.getString(R.string.RgcryptImportKeyFromText),
+                LocaleController.getString(R.string.RgcryptDeleteImportedKey),
+                LocaleController.getString(R.string.RgcryptManageImportedKeys)
         };
         new AlertDialog.Builder(getParentActivity())
-                .setTitle("RGCRYPT")
+                .setTitle(LocaleController.getString(R.string.RgcryptTitle))
                 .setItems(items, (dialog, which) -> {
+                    if (!isRgcryptUiAllowed()) {
+                        return;
+                    }
                     switch (which) {
                         case 0:
                             sendMyKeyCard();
@@ -20847,12 +20862,170 @@ public class ChatActivity extends BaseFragment implements
                         case 5:
                             showRgcryptDeleteKeyDialog();
                             break;
+                        case 6:
+                            showRgcryptManageImportedKeysDialog();
+                            break;
                     }
                 })
                 .show();
     }
+    private void showRgcryptManageImportedKeysDialog() {
+        selectRgcryptPeerId(peerId -> {
+            Activity activity = getParentActivity();
+            if (peerId == null || activity == null || !isRgcryptUiAllowed()) {
+                return;
+            }
+            Utilities.globalQueue.postRunnable(() -> {
+                try {
+                    List<org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoKeyringEntry> entries =
+                            new RgCryptoKeyringStore(activity, currentAccount).getByPeer(peerId);
+                    RgCryptoKeyringCache.get(activity, currentAccount).refreshForPeers(Collections.singletonList(peerId),
+                            () -> showRgcryptImportedKeyList(activity, peerId, entries),
+                            () -> showRgcryptAlert(R.string.RgcryptRefreshFailed));
+                } catch (Exception e) {
+                    FileLog.e(e);
+                    AndroidUtilities.runOnUIThread(() -> showRgcryptAlert(R.string.RgcryptImportFailed));
+                }
+            });
+        });
+    }
 
+    private void showRgcryptImportedKeyList(Activity activity, String peerId,
+                                             List<org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoKeyringEntry> entries) {
+        if (getParentActivity() == null || !isRgcryptUiAllowed()) {
+            return;
+        }
+        if (entries == null || entries.isEmpty()) {
+            showRgcryptAlert(R.string.RgcryptNoImportedKeys);
+            return;
+        }
+        CharSequence[] labels = new CharSequence[entries.size()];
+        for (int i = 0; i < entries.size(); i++) {
+            labels[i] = formatRgcryptKeyEntryLabel(entries.get(i));
+        }
+        new AlertDialog.Builder(activity)
+                .setTitle(LocaleController.getString(R.string.RgcryptManageImportedKeys))
+                .setItems(labels, (dialog, which) -> showRgcryptImportedKeyDetails(peerId, entries.get(which)))
+                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                .show();
+    }
+
+    private void showRgcryptImportedKeyDetails(String peerId,
+                                               org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoKeyringEntry entry) {
+        if (getParentActivity() == null || !isRgcryptUiAllowed()) {
+            return;
+        }
+        if (entry == null || TextUtils.isEmpty(entry.keycardJson)) {
+            showRgcryptAlert(R.string.RgcryptMalformedKey);
+            return;
+        }
+        try {
+            RgCryptoKeyCard card = RgCryptoKeyCard.fromJson(entry.keycardJson);
+            boolean signatureValid;
+            try {
+                signatureValid = card.verifySelf();
+            } catch (Exception ignored) {
+                signatureValid = false;
+            }
+            String signingKid = card.signingKid != null ? card.signingKid : entry.signingKid;
+            String encryptionKid = card.encryptionKid != null ? card.encryptionKid : entry.encryptionKid;
+            StringBuilder message = new StringBuilder();
+            message.append(LocaleController.formatString(R.string.RgcryptPeerLabel, getRgcryptPeerName(Long.parseLong(peerId)))).append('\n');
+            message.append(LocaleController.formatString(R.string.RgcryptDeviceLabel,
+                    org.telegram.messenger.partisan.rgcrypto.RgCryptoIds.normalizeDeviceId(card.deviceId))).append('\n');
+            message.append(LocaleController.formatString(R.string.RgcryptSigningKidLabel, signingKid)).append('\n');
+            message.append(LocaleController.formatString(R.string.RgcryptEncryptionKidLabel, encryptionKid)).append('\n');
+            message.append(LocaleController.formatString(R.string.RgcryptTrustLabel, formatRgcryptTrustState(entry.trustState))).append('\n');
+            message.append(LocaleController.formatString(R.string.RgcryptSignatureLabel,
+                    signatureValid ? getString(R.string.RgcryptValid) : getString(R.string.RgcryptInvalid))).append('\n');
+            message.append(LocaleController.formatString(R.string.RgcryptFingerprintLabel, card.fingerprintSha256())).append('\n');
+            message.append(LocaleController.formatString(R.string.RgcryptSafetyNumberLabel, card.safetyNumber()));
+            if (RgCryptoKeyringCache.get(getContext(), currentAccount).isSigningKidReusedByOtherPeer(peerId, signingKid)) {
+                message.append('\n').append(getString(R.string.RgcryptSameSigningKidWarning));
+            }
+            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity())
+                    .setTitle(getString(R.string.RgcryptFingerprint))
+                    .setMessage(message.toString())
+                    .setNegativeButton(getString(R.string.Close), null);
+            if (entry.trustState == RgCryptoTrustState.TRUSTED) {
+                builder.setPositiveButton(getString(R.string.RgcryptRevokeTrust), (dialog, which) ->
+                        updateRgcryptTrust(peerId, entry, RgCryptoTrustState.REVOKED));
+            } else if (entry.trustState == RgCryptoTrustState.REVOKED) {
+                builder.setPositiveButton(getString(R.string.RgcryptRestoreAsUntrusted), (dialog, which) ->
+                        updateRgcryptTrust(peerId, entry, RgCryptoTrustState.UNTRUSTED));
+            } else if (entry.trustState == RgCryptoTrustState.UNTRUSTED && signatureValid && entry.signatureValid == RgCryptoSignatureState.VALID) {
+                builder.setPositiveButton(getString(R.string.RgcryptTrustAfterFingerprintReview), (dialog, which) ->
+                        confirmRgcryptTrust(peerId, entry, card));
+            }
+            builder.show();
+        } catch (Exception e) {
+            FileLog.e(e);
+            showRgcryptAlert(R.string.RgcryptMalformedKey);
+        }
+    }
+
+    private void confirmRgcryptTrust(String peerId,
+                                     org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoKeyringEntry entry,
+                                     RgCryptoKeyCard card) {
+        if (getParentActivity() == null || !isRgcryptUiAllowed()) {
+            return;
+        }
+        try {
+            new AlertDialog.Builder(getParentActivity())
+                    .setTitle(getString(R.string.RgcryptTrustAfterFingerprintReview))
+                    .setMessage(LocaleController.formatString(R.string.RgcryptTrustConfirmation,
+                            card.fingerprintSha256(), card.safetyNumber()))
+                    .setPositiveButton(getString(R.string.RgcryptTrustAfterFingerprintReview),
+                            (dialog, which) -> updateRgcryptTrust(peerId, entry, RgCryptoTrustState.TRUSTED))
+                    .setNegativeButton(getString(R.string.Cancel), null)
+                    .show();
+        } catch (Exception e) {
+            FileLog.e(e);
+            showRgcryptAlert(R.string.RgcryptMalformedKey);
+        }
+    }
+
+    private void updateRgcryptTrust(String peerId, RgCryptoKeyringEntry entry, int trustState) {
+        Context context = getContext();
+        if (context == null || entry == null || !isRgcryptUiAllowed()) {
+            return;
+        }
+        Utilities.globalQueue.postRunnable(() -> {
+            try {
+                if (!isRgcryptUiAllowed()) {
+                    return;
+                }
+                RgCryptoKeyringStore store = new RgCryptoKeyringStore(context, currentAccount);
+                RgCryptoKeyringEntry current = store.getByKids(peerId, entry.deviceId, entry.signingKid, entry.encryptionKid);
+                if (current == null && entry.createdAt == 0 && trustState == RgCryptoTrustState.TRUSTED) {
+                    current = store.importKeyCard(peerId, entry.keycardJson, RgCryptoTrustState.UNTRUSTED, true).entry;
+                }
+                if (current == null || current.trustState != entry.trustState) {
+                    throw new IllegalStateException("Key changed since fingerprint review");
+                }
+                store.updateTrustState(peerId, current.deviceId, current.signingKeyId, current.encryptionKeyId, trustState);
+                int result = trustState == RgCryptoTrustState.TRUSTED ? R.string.RgcryptTrustGranted
+                        : trustState == RgCryptoTrustState.REVOKED ? R.string.RgcryptTrustRevoked : R.string.RgcryptTrustRestored;
+                refreshRgcryptPeer(context, peerId, result);
+            } catch (Exception e) {
+                FileLog.e(e);
+                AndroidUtilities.runOnUIThread(() -> showRgcryptAlert(R.string.RgcryptTrustUpdateFailed));
+            }
+        });
+    }
+
+    private String formatRgcryptTrustState(int trustState) {
+        if (trustState == RgCryptoTrustState.TRUSTED) {
+            return LocaleController.getString(R.string.RgcryptTrusted);
+        } else if (trustState == RgCryptoTrustState.REVOKED) {
+            return LocaleController.getString(R.string.RgcryptRevoked);
+        }
+        return LocaleController.getString(R.string.RgcryptUntrusted);
+    }
     private void showMyKeyFingerprint() {
+        if (getParentActivity() == null || !isRgcryptUiAllowed()) {
+            return;
+        }
         try {
             RgCrypto.initialize();
             RgCryptoKeyCard card = RgCryptoKeyCard.create(
@@ -20863,138 +21036,233 @@ public class ChatActivity extends BaseFragment implements
             String fingerprint = card.fingerprintSha256();
             String safetyNumber = card.safetyNumber();
             StringBuilder message = new StringBuilder();
-            message.append("Отпечаток:\n").append(fingerprint);
+            message.append(LocaleController.formatString(R.string.RgcryptFingerprintLabel, fingerprint));
             if (safetyNumber != null) {
-                message.append("\n\nSafety number:\n").append(safetyNumber);
+                message.append("\n\n").append(LocaleController.formatString(R.string.RgcryptSafetyNumberLabel, safetyNumber));
             }
-            AlertsCreator.showSimpleAlert(this, "RGCRYPT", message.toString());
+            AlertsCreator.showSimpleAlert(this, getString(R.string.RgcryptTitle), message.toString());
         } catch (Exception e) {
             FileLog.e(e);
-            AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Не удалось получить отпечаток");
+            AlertsCreator.showSimpleAlert(this, getString(R.string.RgcryptTitle), getString(R.string.RgcryptFingerprintFailed));
         }
     }
 
-    private void showRgcryptResetKeysDialog() {
-        if (getParentActivity() == null) {
+    private void showRgcryptAlert(int message) {
+        if (getParentActivity() != null && isRgcryptUiAllowed()) {
+            AlertsCreator.showSimpleAlert(this, getString(R.string.RgcryptTitle), getString(message));
+        }
+    }
+
+    private void refreshRgcryptPeer(Context context, String peerId, int message) {
+        RgCryptoKeyringCache cache = RgCryptoKeyringCache.get(context, currentAccount);
+        cache.refreshForPeers(Collections.singletonList(peerId), () -> {
+            refreshRgcryptKeyMessages(cache, peerId);
+            showRgcryptAlert(message);
+        }, () -> {
+            refreshRgcryptKeyMessages(cache, peerId);
+            showRgcryptAlert(R.string.RgcryptRefreshFailed);
+        });
+    }
+
+    private void refreshRgcryptKeyMessages(RgCryptoKeyringCache cache, String peerId) {
+        if (!isRgcryptUiAllowed()) {
             return;
         }
-        DialogCheckBox clearImportedKeys = new DialogCheckBox(getParentActivity());
-        clearImportedKeys.setTextAndCheck("Сбросить импортированные ключи", false);
+        for (MessageObject message : messages) {
+            if (message.rgcryptKeyCardJson != null && peerId.equals(String.valueOf(message.getFromChatId()))) {
+                message.rgcryptKeyCardVerified = message.rgcryptKeyCardSignatureOk && cache.getTrustState(peerId,
+                        message.rgcryptKeyCardSigningKid, message.rgcryptKeyCardEncryptionKid) == RgCryptoTrustState.TRUSTED;
+                message.messageText = getString(!message.rgcryptKeyCardSignatureOk ? R.string.RgcryptKeyCardBadSignature
+                        : message.rgcryptKeyCardVerified ? R.string.RgcryptKeyCardVerified : R.string.RgcryptKeyCardUnverified);
+                message.forceUpdate = true;
+            }
+        }
+        if (chatAdapter != null) {
+            chatAdapter.notifyDataSetChanged(false);
+        }
+    }
+
+    private void showRgcryptMessageKeyDetails(String peerId, String json) {
+        Context context = getContext();
+        if (context == null || !isRgcryptUiAllowed()) {
+            return;
+        }
+        Utilities.globalQueue.postRunnable(() -> {
+            try {
+                RgCryptoKeyCard card = RgCryptoKeyCard.fromJson(json);
+                boolean valid;
+                try {
+                    valid = card.verifySelf();
+                } catch (Exception e) {
+                    valid = false;
+                }
+                RgCryptoKeyringEntry preview = RgCryptoKeyringEntry.fromKeyCard(peerId, card,
+                        RgCryptoTrustState.UNTRUSTED, valid ? RgCryptoSignatureState.VALID : RgCryptoSignatureState.INVALID, 0);
+                RgCryptoKeyringEntry existing = new RgCryptoKeyringStore(context, currentAccount).getByKids(
+                        peerId, preview.deviceId, preview.signingKid, preview.encryptionKid);
+                RgCryptoKeyringEntry entry = existing != null ? existing : preview;
+                AndroidUtilities.runOnUIThread(() -> showRgcryptImportedKeyDetails(peerId, entry));
+            } catch (Exception e) {
+                FileLog.e(e);
+                AndroidUtilities.runOnUIThread(() -> showRgcryptAlert(R.string.RgcryptMalformedKey));
+            }
+        });
+    }
+
+    private void showRgcryptResetKeysDialog() {
+        Activity activity = getParentActivity();
+        if (activity == null || !isRgcryptUiAllowed()) {
+            return;
+        }
+        DialogCheckBox clearImportedKeys = new DialogCheckBox(activity);
+        clearImportedKeys.setTextAndCheck(getString(R.string.RgcryptResetImportedKeys), false);
         clearImportedKeys.setPadding(0, AndroidUtilities.dp(6), 0, AndroidUtilities.dp(6));
-        new AlertDialog.Builder(getParentActivity())
-                .setTitle("RGCRYPT")
-                .setMessage("Сбросить ключи и сгенерировать новые? Старые сообщения больше не расшифруются.")
+        new AlertDialog.Builder(activity)
+                .setTitle(getString(R.string.RgcryptTitle))
+                .setMessage(getString(R.string.RgcryptResetKeysMessage))
                 .setView(clearImportedKeys)
-                .setPositiveButton("Сбросить", (dialog, which) -> {
+                .setPositiveButton(getString(R.string.RgcryptReset), (dialog, which) -> {
+                    if (!isRgcryptUiAllowed()) {
+                        return;
+                    }
                     boolean shouldClearImported = clearImportedKeys.isChecked();
                     Utilities.globalQueue.postRunnable(() -> {
-                        RgCryptoKeysetStorage.resetKeysets(getParentActivity(), currentAccount, null);
-                        if (shouldClearImported) {
-                            new RgCryptoKeyringStore(getParentActivity(), currentAccount).clearAll();
-                            RgCryptoKeyringCache.get(getParentActivity(), currentAccount).clearAll();
+                        try {
+                            if (!isRgcryptUiAllowed()) {
+                                return;
+                            }
+                            RgCryptoKeysetStorage.resetKeysets(activity, currentAccount, null);
+                            RgCryptoKeyringCache cache = RgCryptoKeyringCache.get(activity, currentAccount);
+                            if (shouldClearImported) {
+                                new RgCryptoKeyringStore(activity, currentAccount).clearAll();
+                                cache.clearAll();
+                            }
+                            cache.refreshForPeers(Collections.emptyList(), () -> showRgcryptAlert(R.string.RgcryptResetSuccess),
+                                    () -> showRgcryptAlert(R.string.RgcryptRefreshFailed));
+                        } catch (Exception e) {
+                            FileLog.e(e);
+                            AndroidUtilities.runOnUIThread(() -> showRgcryptAlert(R.string.RgcryptResetFailed));
                         }
                     });
-                    AlertsCreator.showSimpleAlert(ChatActivity.this, "RGCRYPT", "Ключи сброшены. Отправьте новый KeyCard.");
                 })
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(getString(R.string.Cancel), null)
                 .show();
+    }
+
+    private void importRgcryptKey(String peerId, String rawText) {
+        Context context = getContext();
+        if (context == null || !isRgcryptUiAllowed()) {
+            return;
+        }
+        Utilities.globalQueue.postRunnable(() -> {
+            try {
+                if (!isRgcryptUiAllowed()) {
+                    return;
+                }
+                String json = rawText.startsWith(RgCryptoConstants.KEYCARD_PREFIX)
+                        ? RgCryptoKeyCardCodec.unpack(rawText).toJson() : rawText;
+                RgCryptoKeyringStore store = new RgCryptoKeyringStore(context, currentAccount);
+                RgCryptoKeyCard card = RgCryptoKeyCard.fromJson(json);
+                String deviceId = org.telegram.messenger.partisan.rgcrypto.RgCryptoIds.normalizeDeviceId(card.deviceId);
+                boolean changed = false;
+                for (RgCryptoKeyringEntry entry : store.getByPeer(peerId)) {
+                    if (deviceId.equals(entry.deviceId) && (!entry.signingKeysetJson.equals(card.signingKeysetJson)
+                            || !entry.encryptionKeysetJson.equals(card.encryptionKeysetJson))) {
+                        changed = true;
+                    }
+                }
+                store.importKeyCard(peerId, json, RgCryptoTrustState.UNTRUSTED, true);
+                refreshRgcryptPeer(context, peerId, changed ? R.string.RgcryptChanged : R.string.RgcryptImported);
+            } catch (Exception e) {
+                FileLog.e(e);
+                AndroidUtilities.runOnUIThread(() -> showRgcryptAlert(R.string.RgcryptImportFailed));
+            }
+        });
     }
 
     private void showRgcryptImportFromTextDialog() {
         selectRgcryptPeerId(peerId -> {
-            if (peerId == null || getParentActivity() == null) {
+            if (peerId == null || getParentActivity() == null || !isRgcryptUiAllowed()) {
                 return;
             }
             EditText editText = new EditText(getParentActivity());
             editText.setMinLines(4);
             editText.setMaxLines(10);
             editText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-            editText.setHint("RGKEY:...");
+            editText.setHint(getString(R.string.RgcryptKeyCardHint));
             new AlertDialog.Builder(getParentActivity())
-                    .setTitle("Импорт ключа")
+                    .setTitle(getString(R.string.RgcryptImportKey))
                     .setView(editText)
-                    .setPositiveButton("Импортировать", (dialog, which) -> {
+                    .setPositiveButton(getString(R.string.RgcryptImport), (dialog, which) -> {
                         String rawText = editText.getText() != null ? editText.getText().toString().trim() : "";
                         if (TextUtils.isEmpty(rawText)) {
-                            AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Пустой ключ");
+                            showRgcryptAlert(R.string.RgcryptEmptyKey);
                             return;
                         }
-                        Utilities.globalQueue.postRunnable(() -> {
-                            try {
-                                String keyCardJson = rawText;
-                                if (rawText.startsWith(org.telegram.messenger.partisan.rgcrypto.RgCryptoConstants.KEYCARD_PREFIX)) {
-                                    RgCryptoKeyCard card = RgCryptoKeyCardCodec.unpack(rawText);
-                                    keyCardJson = card.toJson();
-                                }
-                                RgCryptoKeyringStore store = new RgCryptoKeyringStore(getParentActivity(), currentAccount);
-                                store.importKeyCard(peerId, keyCardJson, RgCryptoTrustState.UNTRUSTED, true);
-                                AndroidUtilities.runOnUIThread(() -> {
-                                    AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Ключ импортирован");
-                                    RgCryptoKeyringCache.get(getParentActivity(), currentAccount)
-                                            .refreshForPeers(Collections.singletonList(peerId));
-                                });
-                            } catch (Exception e) {
-                                FileLog.e(e);
-                                AndroidUtilities.runOnUIThread(() ->
-                                        AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Не удалось импортировать ключ"));
-                            }
-                        });
+                        importRgcryptKey(peerId, rawText);
                     })
-                    .setNegativeButton("Отмена", null)
+                    .setNegativeButton(getString(R.string.Cancel), null)
                     .show();
         });
     }
 
     private void showRgcryptDeleteKeyDialog() {
         selectRgcryptPeerId(peerId -> {
-            if (peerId == null || getParentActivity() == null) {
+            Activity activity = getParentActivity();
+            if (peerId == null || activity == null || !isRgcryptUiAllowed()) {
                 return;
             }
             Utilities.globalQueue.postRunnable(() -> {
-                RgCryptoKeyringStore store = new RgCryptoKeyringStore(getParentActivity(), currentAccount);
-                List<org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoKeyringEntry> entries = store.getByPeer(peerId);
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (entries == null || entries.isEmpty()) {
-                        AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Нет импортированных ключей");
-                        return;
-                    }
-                    CharSequence[] labels = new CharSequence[entries.size()];
-                    for (int i = 0; i < entries.size(); i++) {
-                        labels[i] = formatRgcryptKeyEntryLabel(entries.get(i));
-                    }
-                    new AlertDialog.Builder(getParentActivity())
-                            .setTitle("Удалить ключ")
-                            .setItems(labels, (dialog, which) -> {
-                                org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoKeyringEntry entry = entries.get(which);
-                                Utilities.globalQueue.postRunnable(() -> {
-                                    store.deleteByKeyIds(peerId, entry.deviceId, entry.signingKeyId, entry.encryptionKeyId);
-                                    RgCryptoKeyringCache.get(getParentActivity(), currentAccount)
-                                            .refreshForPeers(Collections.singletonList(peerId));
-                                });
-                                AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Ключ удален");
-                            })
-                            .setNegativeButton("Отмена", null)
-                            .show();
-                });
+                try {
+                    RgCryptoKeyringStore store = new RgCryptoKeyringStore(activity, currentAccount);
+                    List<RgCryptoKeyringEntry> entries = store.getByPeer(peerId);
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (getParentActivity() == null || !isRgcryptUiAllowed()) {
+                            return;
+                        }
+                        if (entries.isEmpty()) {
+                            showRgcryptAlert(R.string.RgcryptNoImportedKeys);
+                            return;
+                        }
+                        CharSequence[] labels = new CharSequence[entries.size()];
+                        for (int i = 0; i < entries.size(); i++) {
+                            labels[i] = formatRgcryptKeyEntryLabel(entries.get(i));
+                        }
+                        new AlertDialog.Builder(activity)
+                                .setTitle(getString(R.string.RgcryptDeleteKey))
+                                .setItems(labels, (dialog, which) -> {
+                                    RgCryptoKeyringEntry entry = entries.get(which);
+                                    Utilities.globalQueue.postRunnable(() -> {
+                                        try {
+                                            if (!isRgcryptUiAllowed()) {
+                                                return;
+                                            }
+                                            store.deleteByKeyIds(peerId, entry.deviceId, entry.signingKeyId, entry.encryptionKeyId);
+                                            refreshRgcryptPeer(activity, peerId, R.string.RgcryptDeleted);
+                                        } catch (Exception e) {
+                                            FileLog.e(e);
+                                            AndroidUtilities.runOnUIThread(() -> showRgcryptAlert(R.string.RgcryptDeleteFailed));
+                                        }
+                                    });
+                                })
+                                .setNegativeButton(getString(R.string.Cancel), null)
+                                .show();
+                    });
+                } catch (Exception e) {
+                    FileLog.e(e);
+                    AndroidUtilities.runOnUIThread(() -> showRgcryptAlert(R.string.RgcryptDeleteFailed));
+                }
             });
         });
     }
 
-    private CharSequence formatRgcryptKeyEntryLabel(org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoKeyringEntry entry) {
+    private CharSequence formatRgcryptKeyEntryLabel(RgCryptoKeyringEntry entry) {
         String signing = entry.signingKid != null ? entry.signingKid : String.valueOf(entry.signingKeyId);
         String encryption = entry.encryptionKid != null ? entry.encryptionKid : String.valueOf(entry.encryptionKeyId);
-        String trust;
-        if (entry.trustState == RgCryptoTrustState.TRUSTED) {
-            trust = "trusted";
-        } else if (entry.trustState == RgCryptoTrustState.REVOKED) {
-            trust = "revoked";
-        } else {
-            trust = "untrusted";
-        }
-        return "Device: " + entry.deviceId + "\n" +
-                "Signing: " + signing + "\n" +
-                "Encryption: " + encryption + "\n" +
-                "Trust: " + trust;
+        return LocaleController.formatString(R.string.RgcryptDeviceLabel, entry.deviceId) + "\n" +
+                LocaleController.formatString(R.string.RgcryptSigningKidLabel, signing) + "\n" +
+                LocaleController.formatString(R.string.RgcryptEncryptionKidLabel, encryption) + "\n" +
+                LocaleController.formatString(R.string.RgcryptTrustLabel, formatRgcryptTrustState(entry.trustState));
     }
 
     private interface RgcryptPeerIdCallback {
@@ -21096,11 +21364,11 @@ public class ChatActivity extends BaseFragment implements
         }
         File src = new File(path);
         if (!src.exists()) {
-            AlertsCreator.showSimpleAlert(this, "RGCRYPT", LocaleController.getString(R.string.ErrorOccurred));
+            AlertsCreator.showSimpleAlert(this, getString(R.string.RgcryptTitle), LocaleController.getString(R.string.ErrorOccurred));
             return false;
         }
         if (src.length() > RgCryptoConstants.MAX_STREAM_FILE_BYTES) {
-            AlertsCreator.showSimpleAlert(this, "RGCRYPT", LocaleController.getString(R.string.FileTooLarge));
+            AlertsCreator.showSimpleAlert(this, getString(R.string.RgcryptTitle), LocaleController.getString(R.string.FileTooLarge));
             return false;
         }
         try {
@@ -21128,7 +21396,7 @@ public class ChatActivity extends BaseFragment implements
                     RgCryptoConstants.FILE_EXT
             );
             if (out == null) {
-                AlertsCreator.showSimpleAlert(this, "RGCRYPT", LocaleController.getString(R.string.ErrorOccurred));
+                AlertsCreator.showSimpleAlert(this, getString(R.string.RgcryptTitle), LocaleController.getString(R.string.ErrorOccurred));
                 return false;
             }
             try (FileInputStream in = new FileInputStream(src);
@@ -21181,13 +21449,13 @@ public class ChatActivity extends BaseFragment implements
             return true;
         } catch (Exception e) {
             FileLog.e(e);
-            AlertsCreator.showSimpleAlert(this, "RGCRYPT", LocaleController.getString(R.string.ErrorOccurred));
+            AlertsCreator.showSimpleAlert(this, getString(R.string.RgcryptTitle), LocaleController.getString(R.string.ErrorOccurred));
             return false;
         }
     }
 
     private void selectRgcryptPeerId(RgcryptPeerIdCallback callback) {
-        if (callback == null) {
+        if (callback == null || getParentActivity() == null || !isRgcryptUiAllowed()) {
             return;
         }
         if (DialogObject.isUserDialog(dialog_id)) {
@@ -21196,7 +21464,7 @@ public class ChatActivity extends BaseFragment implements
         }
         ArrayList<Long> peerIds = collectRgcryptPeerIdsForDialog();
         if (peerIds == null || peerIds.isEmpty()) {
-            AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Нет участников для выбора");
+            AlertsCreator.showSimpleAlert(this, getString(R.string.RgcryptTitle), getString(R.string.RgcryptNoParticipants));
             return;
         }
         long myId = getUserConfig().getClientUserId();
@@ -21207,7 +21475,7 @@ public class ChatActivity extends BaseFragment implements
             }
         }
         if (filtered.isEmpty()) {
-            AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Нет участников для выбора");
+            AlertsCreator.showSimpleAlert(this, getString(R.string.RgcryptTitle), getString(R.string.RgcryptNoParticipants));
             return;
         }
         if (filtered.size() == 1) {
@@ -21220,9 +21488,9 @@ public class ChatActivity extends BaseFragment implements
             names[i] = getRgcryptPeerName(peerId);
         }
         new AlertDialog.Builder(getParentActivity())
-                .setTitle("Выберите пользователя")
+                .setTitle(getString(R.string.RgcryptSelectUser))
                 .setItems(names, (dialog, which) -> callback.onPeerId(String.valueOf(filtered.get(which))))
-                .setNegativeButton("Отмена", null)
+                .setNegativeButton(getString(R.string.Cancel), null)
                 .show();
     }
 
@@ -35152,120 +35420,14 @@ public class ChatActivity extends BaseFragment implements
                 break;
             }
             case OPTION_RGCRYPT_IMPORT_KEYCARD: {
-                if (selectedObject != null && selectedObject.rgcryptKeyCardJson != null) {
-                    final Context ctx = getContext();
-                    if (ctx == null) {
-                        break;
-                    }
-                    final String peerId = String.valueOf(selectedObject.getFromChatId());
-                    final String keyCardJson = selectedObject.rgcryptKeyCardJson;
-                    Utilities.globalQueue.postRunnable(() -> {
-                        boolean keyChanged = false;
-                        try {
-                            RgCryptoKeyringStore store = new RgCryptoKeyringStore(ctx, currentAccount);
-                            RgCryptoKeyCard card = RgCryptoKeyCard.fromJson(keyCardJson);
-                            String deviceId = org.telegram.messenger.partisan.rgcrypto.RgCryptoIds.normalizeDeviceId(card.deviceId);
-                            String signingKid = card.signingKid;
-                            String encryptionKid = card.encryptionKid;
-                            if (signingKid == null) {
-                                signingKid = org.telegram.messenger.partisan.rgcrypto.RgCryptoKeys.kidFromKeyset(
-                                        org.telegram.messenger.partisan.rgcrypto.RgCryptoKeys.parsePublicKeyset(card.signingKeysetJson));
-                            }
-                            if (encryptionKid == null) {
-                                encryptionKid = org.telegram.messenger.partisan.rgcrypto.RgCryptoKeys.kidFromKeyset(
-                                        org.telegram.messenger.partisan.rgcrypto.RgCryptoKeys.parsePublicKeyset(card.encryptionKeysetJson));
-                            }
-                            org.telegram.messenger.partisan.rgcrypto.storage.RgCryptoKeyringEntry existing =
-                                    store.getByKids(peerId, deviceId, signingKid, encryptionKid);
-                            keyChanged = existing != null &&
-                                    (!existing.signingKeysetJson.equals(card.signingKeysetJson) ||
-                                            !existing.encryptionKeysetJson.equals(card.encryptionKeysetJson));
-                            store.importKeyCard(peerId, keyCardJson, RgCryptoTrustState.UNTRUSTED, true);
-                            boolean finalKeyChanged = keyChanged;
-                            AndroidUtilities.runOnUIThread(() -> {
-                                if (finalKeyChanged) {
-                                    AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Ключ изменился. Проверьте отпечаток.");
-                                } else {
-                                    AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Ключ импортирован");
-                                }
-                                RgCryptoKeyringCache.get(ctx, currentAccount).refreshForPeers(Collections.singletonList(peerId));
-                            });
-                        } catch (Exception e) {
-                            FileLog.e(e);
-                            AndroidUtilities.runOnUIThread(() ->
-                                    AlertsCreator.showSimpleAlert(this, "RGCRYPT", "Не удалось импортировать ключ"));
-                        }
-                    });
+                if (isRgcryptUiAllowed() && selectedObject != null && selectedObject.rgcryptKeyCardJson != null) {
+                    importRgcryptKey(String.valueOf(selectedObject.getFromChatId()), selectedObject.rgcryptKeyCardJson);
                 }
                 break;
             }
             case OPTION_RGCRYPT_SHOW_FINGERPRINT: {
-                if (selectedObject != null && selectedObject.rgcryptKeyCardFingerprint != null) {
-                    String peerId = String.valueOf(selectedObject.getFromChatId());
-                    String peerName = peerId;
-                    long fromId = selectedObject.getFromChatId();
-                    if (fromId > 0) {
-                        TLRPC.User user = getMessagesController().getUser(fromId);
-                        if (user != null) {
-                            peerName = UserObject.getUserName(user);
-                        }
-                    } else if (fromId < 0) {
-                        TLRPC.Chat chat = getMessagesController().getChat(-fromId);
-                        if (chat != null) {
-                            peerName = chat.title;
-                        }
-                    }
-                    RgCryptoKeyringCache cache = RgCryptoKeyringCache.get(getContext(), currentAccount);
-                    int trust = cache.getTrustState(peerId,
-                            selectedObject.rgcryptKeyCardSigningKid,
-                            selectedObject.rgcryptKeyCardEncryptionKid);
-                    boolean trusted = trust == RgCryptoTrustState.TRUSTED;
-                    boolean reused = cache.isSigningKidReusedByOtherPeer(peerId, selectedObject.rgcryptKeyCardSigningKid);
-                    StringBuilder sb = new StringBuilder();
-                    sb.append(peerName).append("\n");
-                    sb.append(trusted ? "🔐 Key verified" : "Key NOT verified").append("\n");
-                    sb.append(selectedObject.rgcryptKeyCardSignatureOk ? "Signature: OK" : "Signature: BAD").append("\n");
-                    sb.append("Fingerprint: ").append(selectedObject.rgcryptKeyCardFingerprint);
-                    if (selectedObject.rgcryptKeyCardSafetyNumber != null) {
-                        sb.append("\nSafety number:\n").append(selectedObject.rgcryptKeyCardSafetyNumber);
-                    }
-                    if (reused) {
-                        sb.append("\nWarning: same key used by another contact");
-                    }
-                    final String keyCardJson = selectedObject.rgcryptKeyCardJson;
-                    final boolean signatureOk = selectedObject.rgcryptKeyCardSignatureOk;
-                    AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity())
-                            .setTitle("Отпечаток")
-                            .setMessage(sb.toString())
-                            .setNegativeButton("Закрыть", null);
-                    if (!trusted && signatureOk && keyCardJson != null) {
-                        builder.setPositiveButton("Доверять", (dialog, which) -> {
-                            Utilities.globalQueue.postRunnable(() -> {
-                                try {
-                                    RgCryptoKeyringStore store = new RgCryptoKeyringStore(getParentActivity(), currentAccount);
-                                    store.importKeyCard(peerId, keyCardJson, RgCryptoTrustState.TRUSTED, false);
-                                    RgCryptoKeyringCache.get(getParentActivity(), currentAccount)
-                                            .refreshForPeers(Collections.singletonList(peerId));
-                                    AndroidUtilities.runOnUIThread(() -> {
-                                        if (selectedObject != null) {
-                                            selectedObject.rgcryptKeyCardVerified = true;
-                                            selectedObject.messageText = "🔐 KeyCard (VERIFIED)";
-                                            selectedObject.forceUpdate = true;
-                                            if (chatAdapter != null) {
-                                                chatAdapter.notifyDataSetChanged(false);
-                                            }
-                                        }
-                                        AlertsCreator.showSimpleAlert(ChatActivity.this, "RGCRYPT", "Ключ помечен как доверенный");
-                                    });
-                                } catch (Exception e) {
-                                    FileLog.e(e);
-                                    AndroidUtilities.runOnUIThread(() ->
-                                            AlertsCreator.showSimpleAlert(ChatActivity.this, "RGCRYPT", "Не удалось пометить ключ"));
-                                }
-                            });
-                        });
-                    }
-                    builder.show();
+                if (isRgcryptUiAllowed() && selectedObject != null && selectedObject.rgcryptKeyCardJson != null) {
+                    showRgcryptMessageKeyDetails(String.valueOf(selectedObject.getFromChatId()), selectedObject.rgcryptKeyCardJson);
                 }
                 break;
             }
@@ -48041,20 +48203,20 @@ public class ChatActivity extends BaseFragment implements
                 }
                 if (isRgcryptUiAllowed()) {
                     if (selectedObject.rgcryptDecryptResult != null && selectedObject.rgcryptDecryptResult.status == org.telegram.messenger.partisan.rgcrypto.RgCryptoDecryptResult.Status.NEED_KEY) {
-                        items.add("Попросить ключ");
+                        items.add(LocaleController.getString(R.string.RgcryptRequestKey));
                         options.add(OPTION_RGCRYPT_REQUEST_KEY);
                         icons.add(R.drawable.msg_mini_lock3);
                     }
                     if (selectedObject.rgcryptKeyRequestRequesterId != null) {
-                        items.add("Отправить мой ключ");
+                        items.add(LocaleController.getString(R.string.RgcryptSendKey));
                         options.add(OPTION_RGCRYPT_SEND_KEY);
                         icons.add(R.drawable.msg_mini_lock3);
                     }
                     if (selectedObject.rgcryptKeyCardJson != null) {
-                        items.add("Импортировать ключ");
+                        items.add(LocaleController.getString(R.string.RgcryptImportKey));
                         options.add(OPTION_RGCRYPT_IMPORT_KEYCARD);
                         icons.add(R.drawable.msg_mini_lock3);
-                        items.add("Показать отпечаток");
+                        items.add(LocaleController.getString(R.string.RgcryptFingerprint));
                         options.add(OPTION_RGCRYPT_SHOW_FINGERPRINT);
                         icons.add(R.drawable.msg_mini_lock3);
                     }
@@ -48156,20 +48318,20 @@ public class ChatActivity extends BaseFragment implements
                 }
                 if (isRgcryptUiAllowed()) {
                     if (selectedObject.rgcryptDecryptResult != null && selectedObject.rgcryptDecryptResult.status == org.telegram.messenger.partisan.rgcrypto.RgCryptoDecryptResult.Status.NEED_KEY) {
-                        items.add("Попросить ключ");
+                        items.add(LocaleController.getString(R.string.RgcryptRequestKey));
                         options.add(OPTION_RGCRYPT_REQUEST_KEY);
                         icons.add(R.drawable.msg_mini_lock3);
                     }
                     if (selectedObject.rgcryptKeyRequestRequesterId != null) {
-                        items.add("Отправить мой ключ");
+                        items.add(LocaleController.getString(R.string.RgcryptSendKey));
                         options.add(OPTION_RGCRYPT_SEND_KEY);
                         icons.add(R.drawable.msg_mini_lock3);
                     }
                     if (selectedObject.rgcryptKeyCardJson != null) {
-                        items.add("Импортировать ключ");
+                        items.add(LocaleController.getString(R.string.RgcryptImportKey));
                         options.add(OPTION_RGCRYPT_IMPORT_KEYCARD);
                         icons.add(R.drawable.msg_mini_lock3);
-                        items.add("Показать отпечаток");
+                        items.add(LocaleController.getString(R.string.RgcryptFingerprint));
                         options.add(OPTION_RGCRYPT_SHOW_FINGERPRINT);
                         icons.add(R.drawable.msg_mini_lock3);
                     }
@@ -48214,20 +48376,20 @@ public class ChatActivity extends BaseFragment implements
                     }
                 if (isRgcryptUiAllowed()) {
                     if (selectedObject.rgcryptDecryptResult != null && selectedObject.rgcryptDecryptResult.status == org.telegram.messenger.partisan.rgcrypto.RgCryptoDecryptResult.Status.NEED_KEY) {
-                        items.add("Попросить ключ");
+                        items.add(LocaleController.getString(R.string.RgcryptRequestKey));
                         options.add(OPTION_RGCRYPT_REQUEST_KEY);
                         icons.add(R.drawable.msg_mini_lock3);
                     }
                     if (selectedObject.rgcryptKeyRequestRequesterId != null) {
-                        items.add("Отправить мой ключ");
+                        items.add(LocaleController.getString(R.string.RgcryptSendKey));
                         options.add(OPTION_RGCRYPT_SEND_KEY);
                         icons.add(R.drawable.msg_mini_lock3);
                     }
                         if (selectedObject.rgcryptKeyCardJson != null) {
-                            items.add("Импортировать ключ");
+                            items.add(LocaleController.getString(R.string.RgcryptImportKey));
                             options.add(OPTION_RGCRYPT_IMPORT_KEYCARD);
                             icons.add(R.drawable.msg_mini_lock3);
-                            items.add("Показать отпечаток");
+                            items.add(LocaleController.getString(R.string.RgcryptFingerprint));
                             options.add(OPTION_RGCRYPT_SHOW_FINGERPRINT);
                             icons.add(R.drawable.msg_mini_lock3);
                         }
