@@ -16,3 +16,9 @@ TMessagesProj_AppHuawei/afat/
 
 *.log
 *.apk
+
+# Local release material and task notes
+/keys
+/passkey.txt
+/PLANNOW.md
+/TMessagesProj/config/release.keystore

@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: android-release-${{ github.ref }}
@@ -61,38 +61,23 @@ jobs:
         run: |
           keystore='TMessagesProj/config/release.keystore'
 
-          if [[ -n "${RELEASE_KEYSTORE_BASE64}" && \
-                -n "${RELEASE_STORE_PASSWORD}" && \
-                -n "${RELEASE_KEY_ALIAS}" && \
-                -n "${RELEASE_KEY_PASSWORD}" ]]; then
-            printf '%s' "${RELEASE_KEYSTORE_BASE64}" | base64 --decode > "${keystore}"
-            apk_suffix=''
-            signing_mode='release secrets'
-          else
-            RELEASE_STORE_PASSWORD=$(openssl rand -hex 24)
-            RELEASE_KEY_PASSWORD="${RELEASE_STORE_PASSWORD}"
-            RELEASE_KEY_ALIAS='ci'
-            rm -f "${keystore}"
-            keytool -genkeypair -noprompt \
-              -keystore "${keystore}" \
-              -storepass "${RELEASE_STORE_PASSWORD}" \
-              -keypass "${RELEASE_KEY_PASSWORD}" \
-              -alias "${RELEASE_KEY_ALIAS}" \
-              -keyalg RSA -keysize 2048 -validity 3650 \
-              -dname 'CN=RGram CI, O=RGram CI'
-            apk_suffix='-ci'
-            signing_mode='ephemeral CI key'
-          fi
+          test -n "${RELEASE_KEYSTORE_BASE64}"
+          test -n "${RELEASE_STORE_PASSWORD}"
+          test -n "${RELEASE_KEY_ALIAS}"
+          test -n "${RELEASE_KEY_PASSWORD}"
 
           echo "::add-mask::${RELEASE_STORE_PASSWORD}"
           echo "::add-mask::${RELEASE_KEY_PASSWORD}"
+          printf '%s' "${RELEASE_KEYSTORE_BASE64}" | base64 --decode > "${keystore}"
+          keytool -list \
+            -keystore "${keystore}" \
+            -storepass "${RELEASE_STORE_PASSWORD}" \
+            -alias "${RELEASE_KEY_ALIAS}" >/dev/null
           {
             echo "ORG_GRADLE_PROJECT_RELEASE_STORE_PASSWORD=${RELEASE_STORE_PASSWORD}"
             echo "ORG_GRADLE_PROJECT_RELEASE_KEY_ALIAS=${RELEASE_KEY_ALIAS}"
             echo "ORG_GRADLE_PROJECT_RELEASE_KEY_PASSWORD=${RELEASE_KEY_PASSWORD}"
-            echo "APK_SUFFIX=${apk_suffix}"
           } >> "${GITHUB_ENV}"
-          echo "Signing mode: ${signing_mode}"
 
       - name: Build the universal release APK
         shell: bash
@@ -115,11 +100,11 @@ jobs:
           test -n "${version}"
           test -n "${apk}"
           mkdir -p dist
-          cp "${apk}" "dist/RGram-${version}${APK_SUFFIX}.apk"
+          cp "${apk}" "dist/RGram-${version}.apk"
           cd dist
-          sha256sum "RGram-${version}${APK_SUFFIX}.apk" \
-            > "RGram-${version}${APK_SUFFIX}.apk.sha256"
-          cat "RGram-${version}${APK_SUFFIX}.apk.sha256"
+          sha256sum "RGram-${version}.apk" \
+            > "RGram-${version}.apk.sha256"
+          cat "RGram-${version}.apk.sha256"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -130,3 +115,15 @@ jobs:
             dist/*.sha256
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/*.apk dist/*.sha256 \
+            --verify-tag \
+            --generate-notes \
+            --title "RGram ${GITHUB_REF_NAME#v}"
